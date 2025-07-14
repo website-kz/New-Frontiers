@@ -38,6 +38,17 @@ Color GetBiomeColor(BiomeType biome) {
     }
 }
 
+struct Entity {
+    Vector3 position;
+    Vector3 velocity;
+    float speed;
+    float health;
+    bool alive;
+    int type; // 0 = кабан, 1 = волк, 2 = солдат, 3 = союзник, 4 = птица, 5 = рыба
+    float detectionRange;
+    Color color;
+};
+
 int main() {
     const int screenWidth = 1280;
     const int screenHeight = 720;
@@ -52,9 +63,44 @@ int main() {
     camera.projection = CAMERA_PERSPECTIVE;
     SetCameraMode(camera, CAMERA_FIRST_PERSON);
 
+    float playerAttackRange = 5.0f;
+    float playerAttackDamage = 50.0f;
+
+std::vector<Entity> entities;
+
+for (int i = 0; i < 50; i++) {
+    float x = GetRandomValue(100, WORLD_SIZE - 100);
+    float z = GetRandomValue(100, WORLD_SIZE - 100);
+    BiomeType biome = GetBiome(x, z);
+    float y = GetHeight(x, z, biome);
+
+    int type = GetRandomValue(0, 5);
+    float speed = (type == 4 || type == 5) ? 0.5f : 1.0f;
+    float health = 100.0f;
+    float detectionRange = (type == 2 || type == 1) ? 60.0f : 40.0f;
+    Color col = (type == 0) ? BROWN :
+                (type == 1) ? DARKGRAY :
+                (type == 2) ? RED :
+                (type == 3) ? BLUE :
+                (type == 4) ? SKYBLUE : DARKBLUE;
+
+    entities.push_back({ (Vector3){x, y + 1, z}, {}, speed, health, true, type, detectionRange, col });
+}
     while (!WindowShouldClose()) {
         UpdateCamera(&camera);
+if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    for (Entity& e : entities) {
+        if (!e.alive) continue;
 
+        float dist = Vector3Distance(e.position, camera.position);
+        if (dist < playerAttackRange) {
+            e.health -= playerAttackDamage;
+            if (e.health <= 0) e.alive = false;
+            break;
+        }
+    }
+}
+{
         BeginDrawing();
         ClearBackground(SKYBLUE);
         BeginMode3D(camera);
@@ -62,7 +108,37 @@ int main() {
         float px = camera.position.x;
         float pz = camera.position.z;
 
-        for (float x = px - VIEW_DISTANCE; x < px + VIEW_DISTANCE; x += CELL_SIZE) {
+        for (float x = px - VIEW_DISTANCE; x < px + VIEW_DISTANCE; x += CELL_SIZE) { for (Entity& e : entities) {
+    if (!e.alive) continue;
+
+    float dist = Vector3Distance(e.position, camera.position);
+    
+    // Обнаружение игрока
+    if (dist < e.detectionRange) {
+        Vector3 dir = Vector3Normalize(Vector3Subtract(camera.position, e.position));
+        e.velocity = Vector3Scale(dir, e.speed);
+    } else {
+        // Случайное блуждание
+        if (GetRandomValue(0, 100) < 2) {
+            float angle = GetRandomValue(0, 360) * DEG2RAD;
+            e.velocity = (Vector3){ cosf(angle) * e.speed, 0, sinf(angle) * e.speed };
+        }
+    }
+
+    // Обновление позиции
+    e.position = Vector3Add(e.position, e.velocity);
+    e.position.y = GetHeight(e.position.x, e.position.z, GetBiome(e.position.x, e.position.z)) + 1;
+
+    // Простая коллизия
+    if (e.position.x < 0 || e.position.z < 0 || e.position.x > WORLD_SIZE || e.position.z > WORLD_SIZE)
+        e.velocity = Vector3Scale(e.velocity, -1.0f);
+
+    // Отрисовка
+    float sz = (e.type == 4 || e.type == 5) ? 1.0f : 2.0f;
+    float h = (e.type == 2 || e.type == 3) ? 4.0f : 2.5f;
+    DrawCube(e.position, sz, h, sz, e.color);
+}
+{
             for (float z = pz - VIEW_DISTANCE; z < pz + VIEW_DISTANCE; z += CELL_SIZE) {
                 if (x < 0 || z < 0 || x > WORLD_SIZE || z > WORLD_SIZE) continue;
 
